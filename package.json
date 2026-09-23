@@ -1,0 +1,43 @@
+{
+  "name": "production-planner",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "prisma generate && next build",
+    "start": "next start --hostname 0.0.0.0",
+    "worker": "tsx src/server/worker.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx scripts/seed.ts",
+    "demo": "tsx scripts/build-demo.ts",
+    "test:integration": "node scripts/integration.mjs",
+    "db:backup": "node scripts/backup.mjs",
+    "db:restore": "node scripts/restore.mjs"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.2",
+    "@xyflow/react": "12.10.1",
+    "lucide-react": "0.577.0",
+    "luxon": "3.7.2",
+    "next": "16.3.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/luxon": "3.7.1",
+    "@types/node": "24.10.13",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "embedded-postgres": "18.4.0-beta.17",
+    "esbuild": "0.27.3",
+    "prisma": "6.19.2",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  }
+}

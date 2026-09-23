@@ -1,0 +1,12 @@
+import EmbeddedPostgres from 'embedded-postgres';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {randomBytes} from 'node:crypto';
+const dir=resolve('test-results/postgres');
+const password=randomBytes(24).toString('hex');
+const pg=new EmbeddedPostgres({databaseDir:dir,user:'planner',password,port:55432,persistent:true,postgresFlags:['-h','127.0.0.1'],onLog:()=>{},onError:message=>console.error(String(message))});
+await mkdir('test-results',{recursive:true});await pg.initialise();await pg.start();await pg.createDatabase('planner');
+await writeFile('test-results/test-env.json',JSON.stringify({DATABASE_URL:`postgresql://planner:${password}@127.0.0.1:55432/planner`,APP_URL:'http://127.0.0.1:3000',SESSION_SECRET:randomBytes(32).toString('hex'),TOKEN_ENCRYPTION_KEY:randomBytes(32).toString('hex'),PLANNER_LOGIN:'planner',PLANNER_PASSWORD:randomBytes(24).toString('hex')}));
+console.log('Test PostgreSQL ready on 127.0.0.1:55432; temporary credentials saved in ignored test-results/test-env.json');
+for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>pg.stop().finally(()=>process.exit()));
+setInterval(()=>{},10000);

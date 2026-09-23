@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model Project {
+  id String @id
+  revision Int
+  status String
+  payload Json
+  updatedAt DateTime @updatedAt
+  assignments Assignment[]
+  actuals Actual[]
+  movements Movement[]
+}
+model Assignment {
+  id String @id
+  projectId String
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  start DateTime
+  end DateTime
+  payload Json
+  @@index([projectId,start])
+}
+model Actual {
+  id String @id
+  projectId String
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  assignmentId String
+  payload Json
+  @@index([projectId,assignmentId])
+}
+model Movement {
+  id String @id
+  projectId String
+  project Project @relation(fields:[projectId],references:[id],onDelete:Cascade)
+  at DateTime
+  payload Json
+  @@index([projectId,at])
+}
+model Catalog {
+  id String @id
+  kind String
+  payload Json
+  @@index([kind])
+}
+model ProjectVersion {
+  id String @id @default(cuid())
+  projectId String
+  revision Int
+  payload Json
+  createdAt DateTime @default(now())
+  @@unique([projectId,revision])
+}
+model Job {
+  id String @id @default(cuid())
+  projectId String
+  mode String
+  status String @default("queued")
+  input Json
+  result Json?
+  error String?
+  createdAt DateTime @default(now())
+  startedAt DateTime?
+  finishedAt DateTime?
+  @@index([status,createdAt])
+}
+model ImportSnapshot {
+  id String @id @default(cuid())
+  payload Json
+  appliedAt DateTime?
+  createdAt DateTime @default(now())
+}
+model Credential {
+  id String @id
+  encrypted String
+  updatedAt DateTime @updatedAt
+}
+model Audit {
+  id String @id @default(cuid())
+  action String
+  detail Json
+  createdAt DateTime @default(now())
+}

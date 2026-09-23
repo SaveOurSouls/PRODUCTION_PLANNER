@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# esbuild preserves multiline strings in this generated, self-contained artifact.
+demo/production-planner.html linguist-generated=true -whitespace

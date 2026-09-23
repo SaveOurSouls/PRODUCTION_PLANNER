@@ -1,0 +1,12 @@
+node_modules/
+.pnpm-store/
+.next/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage/
+backups/
+test-results/
+*.log
+*.zip
