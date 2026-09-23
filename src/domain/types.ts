@@ -25,7 +25,7 @@ export interface Project {
   source?: Provenance;
   id: string; revision: number; normVersion: number; code: string; name: string; quantity: number; startDate: string; deadline: string; zone: string;
   status: 'open' | 'closed' | 'deleted'; previousStatus?: 'open' | 'closed'; template: boolean; comment: string;
-  readiness: Record<string,boolean>; employeeIds: string[]; stages: Stage[]; edges: Edge[]; bufferHours: number;
+  readiness: Record<string,boolean>; employeeIds: string[]; stages: Stage[]; edges: Edge[]; bufferHours: number; overtime: Record<string,number>;
   opening: Record<string,number>; supplies: Supply[]; assignments: Assignment[]; baseline: Assignment[]; actuals: Actual[]; movements: Movement[]; demo: boolean;
 }
 export interface Workspace { schemaVersion: 1; projects: Project[]; employees: Employee[]; machines: Machine[]; operations: Operation[] }

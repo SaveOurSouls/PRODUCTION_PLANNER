@@ -24,13 +24,23 @@ export function inventoryErrors(opening:Record<string,number>,moves:Movement[]){
 export interface DailyStock {date:string;stageId:string;opening:number;receipt:number;consume:number;output:number;shipped:number;scrap:number;closing:number;cumulative:number;events:Movement[]}
 export function materialReport(p:Project){
   const plannedMoves:Movement[]=[...p.supplies.map(s=>({...s,kind:'receipt' as const})),...assignmentMovements(p,p.assignments)];
-  const dates=[p.startDate,p.deadline,...p.assignments.map(a=>a.end),...plannedMoves.map(m=>m.at),...p.movements.map(m=>m.at)]
+  const dates=[p.startDate,p.deadline,...p.assignments.map(a=>a.end),...p.actuals.flatMap(f=>[f.start,f.end]),...plannedMoves.map(m=>m.at),...p.movements.map(m=>m.at)]
     .map(at=>DateTime.fromISO(at,{zone:p.zone}).toISODate()!).sort();
   const from=dates[0],to=dates.at(-1)!;
   const planned=dailyInventory(p,plannedMoves,from,to),actual=dailyInventory(p,p.movements,from,to);
   const actualByDay=new Map(actual.map(r=>[JSON.stringify([r.date,r.stageId]),r]));
   const days=new Map<string,{stageId:string;plan:DailyStock;fact:DailyStock}[]>();
+  const activeDates=new Set<string>();
+  const markRange=(start:string,end:string)=>{
+    let day=DateTime.fromISO(start,{zone:p.zone}).startOf('day');
+    const last=DateTime.fromISO(end,{zone:p.zone}).startOf('day');
+    for(let i=0;day<=last&&i<3660;i++,day=day.plus({days:1}))activeDates.add(day.toISODate()!);
+  };
+  for(const a of p.assignments)for(const s of a.segments)markRange(s.start,s.end);
+  for(const f of p.actuals)markRange(f.start,f.end);
+  for(const m of [...plannedMoves,...p.movements])activeDates.add(DateTime.fromISO(m.at,{zone:p.zone}).toISODate()!);
   for(const plan of planned){
+    if(!activeDates.has(plan.date))continue;
     const entries=days.get(plan.date)||[];
     entries.push({stageId:plan.stageId,plan,fact:actualByDay.get(JSON.stringify([plan.date,plan.stageId]))!});
     days.set(plan.date,entries);

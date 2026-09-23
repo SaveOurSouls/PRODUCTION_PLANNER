@@ -79,7 +79,10 @@ describe('Общая таблица материалов',()=>{
   it('сводка и подробный журнал используют один и тот же расчёт',()=>{
     const {w,p}=twoStages();p.assignments=plan(w,p.id,'pull',now)[0].assignments;
     const report=materialReport(p);
-    expect(report.days.flatMap(d=>d.stages.map(s=>s.fact))).toEqual(dailyInventory(p,p.movements,report.from,report.to));
+    const full=dailyInventory(p,p.movements,report.from,report.to);
+    const active=full.filter(row=>report.days.some(day=>day.date===row.date));
+    expect(report.days.flatMap(d=>d.stages.map(s=>s.fact))).toEqual(active);
+    expect(report.days.every(day=>day.stages.some(s=>s.plan.events.length||s.fact.events.length||s.plan.output||s.fact.output))).toBe(true);
     expect(report.days.at(-1)!.stages[1].plan.closing).toBe(p.quantity);
   });
 });

@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
 import { calculateNorm } from './norms';
 import { validateRoute } from './graph';
-import { fitWork, seconds, iso, type Span, overlaps, daySpans } from './calendar';
+import { fitWork, seconds, iso, type Span, overlaps, daySpansWithOvertime } from './calendar';
 import { assignmentMovements, inventoryErrors } from './inventory';
 import type { Workspace,Project,Assignment,Scenario,PlanningMode,Movement,RouteOperation,Employee } from './types';
 import {uid} from './types';
@@ -38,7 +38,7 @@ export function assignmentConflicts(w:Workspace,p:Project,a:Assignment,existing:
   for(const [index,seg] of a.segments.entries()){const s={start:seconds(seg.start),end:seconds(seg.end)};
     if(index>0&&seconds(a.segments[index-1].end)>s.start)errors.push('Интервалы задания пересекаются или нарушен их порядок');
     if(s.end<=s.start)errors.push('Конец задания должен быть позже начала');
-    for(const c of calendars){const date=DateTime.fromISO(seg.start,{zone:c.zone}).toISODate()!;if(!daySpans(c,date).some(d=>d.start<=s.start&&d.end>=s.end))errors.push('Задание выходит за рабочее время');}
+    for(const c of calendars){const date=DateTime.fromISO(seg.start,{zone:c.zone}).toISODate()!;if(!daySpansWithOvertime(c,date,p.overtime[date]||0).some(d=>d.start<=s.start&&d.end>=s.end))errors.push('Задание выходит за рабочее время');}
     for(const b of existing.filter(b=>b.id!==a.id))if(b.employeeIds.some(id=>a.employeeIds.includes(id))||(a.machineId&&b.machineId===a.machineId&&b.machineUnit===a.machineUnit))if(b.segments.some(t=>overlaps(s,{start:seconds(t.start),end:seconds(t.end)})))errors.push(`Пересечение с заданием ${b.id}`);
   }
   if(people.every(Boolean)){const k=Math.min(...people.map(e=>e!.skills[op.operationId]?.coefficient||1));const n=calculateNorm(op.norm,k);const duration=a.segments.reduce((s,x)=>s+seconds(x.end)-seconds(x.start),0);if(duration+0.01<n.cycle*a.quantity+a.setupSeconds)errors.push('Недостаточная длительность задания');}
@@ -102,7 +102,7 @@ function build(w:Workspace,p:Project,mode:PlanningMode,batchSize:number,now:stri
       if(parallel.length>=op.workers)continue;
       for(const r of options){const k=Math.min(...r.group.map(e=>e.skills[op.operationId].coefficient));const norm=calculateNorm(op.norm,k),key=setupKey(stage.id,op,r.group,r.machine?.id,r.unit);const setup=setups.has(key)?0:norm.setup;
         const busy:Span[]=reservations.filter(a=>a.employeeIds.some(id=>r.group.some(e=>e.id===id))||(r.machine&&a.machineId===r.machine.id&&a.machineUnit===r.unit)).flatMap(a=>a.segments.map(s=>({start:seconds(s.start),end:seconds(s.end)})));
-        const segments=fitWork([...r.group.map(e=>e.calendar),...(r.machine?[r.machine.calendar]:[])],busy,Math.max(t,b.ready),b.quantity*norm.cycle+setup);
+        const segments=fitWork([...r.group.map(e=>e.calendar),...(r.machine?[r.machine.calendar]:[])],busy,Math.max(t,b.ready),b.quantity*norm.cycle+setup,730,p.overtime);
         if(!segments)continue;
         const downstream=order.indexOf(stage.id);const buffer=targets.get(stage.id)||0;const deficit=buffer-(stock[stage.id]||0);
         const rank=mode==='pull'?depth.get(stage.id)!*2+(b.op>0?0:1):priority==='downstream'?-downstream:-(deficit/Math.max(1,buffer)*100+downstream);
@@ -128,7 +128,7 @@ function build(w:Workspace,p:Project,mode:PlanningMode,batchSize:number,now:stri
   const finishAt=iso(Math.max(start,...assignments.map(a=>seconds(a.end)),...futureOutputs.map(m=>seconds(m.at))));
   const readyNow=Math.max(0,(p.opening[final.id]||0)+moves.filter(m=>m.stageId===final.id&&seconds(m.at)<start).reduce((sum,m)=>sum+m.quantity,0));
   const firstAt=readyNow>0?iso(start):first?.at??iso(start),firstQuantity=readyNow>0?Math.min(p.quantity,readyNow):first?.quantity??0;
-  let availableSeconds=0;for(const e of w.employees.filter(e=>p.employeeIds.includes(e.id))){let d=DateTime.fromSeconds(start,{zone:e.calendar.zone}).startOf('day');const last=DateTime.fromISO(finishAt);for(let i=0;d<=last&&i<730;i++,d=d.plus({days:1}))for(const s of daySpans(e.calendar,d.toISODate()!)){const low=Math.max(s.start,start),high=Math.min(s.end,seconds(finishAt));if(high>low)availableSeconds+=high-low;}}
+  let availableSeconds=0;for(const e of w.employees.filter(e=>p.employeeIds.includes(e.id))){let d=DateTime.fromSeconds(start,{zone:e.calendar.zone}).startOf('day');const last=DateTime.fromISO(finishAt);for(let i=0;d<=last&&i<730;i++,d=d.plus({days:1}))for(const s of daySpansWithOvertime(e.calendar,d.toISODate()!,p.overtime?.[d.toISODate()!]||0)){const low=Math.max(s.start,start),high=Math.min(s.end,seconds(finishAt));if(high>low)availableSeconds+=high-low;}}
   const usedSeconds=reservations.reduce((sum,a)=>sum+a.employeeIds.filter(id=>p.employeeIds.includes(id)).length*a.segments.reduce((s,seg)=>s+Math.max(0,Math.min(seconds(seg.end),seconds(finishAt))-Math.max(seconds(seg.start),start)),0),0);
   const idleHours=Math.max(0,(availableSeconds-usedSeconds)/3600),warnings:string[]=[];
   if(DateTime.fromISO(finishAt,{zone:p.zone}).toISODate()!>p.deadline)warnings.push('Завершение позже дедлайна');
