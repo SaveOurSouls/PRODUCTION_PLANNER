@@ -1,5 +1,5 @@
 import {canonicalJson} from '../domain/serialization';
-import type {Workspace,Job,Scenario,Project,Actual,Assignment,Movement,Employee,Machine,Operation} from '../domain/types';
+import type {Workspace,Job,Scenario,Project,Actual,Assignment,Movement,Employee,Machine,Operation,PlanningMode} from '../domain/types';
 import {seedWorkspace} from '../domain/seed';
 import {saveProject,cloneProject,recordActual,addMovement,saveAssignment} from '../domain/actions';
 import {plan,applyScenario} from '../domain/scheduler';
@@ -29,7 +29,7 @@ export class Client {
     if(kind==='operations'){const value=operationSchema.parse(item);w.operations=w.operations.filter(e=>e.id!==value.id);w.operations.push(value);}
     return this.persist(w);
   }
-  async calculate(projectId:string,mode:'first'|'throughput',onStatus:(s:string)=>void):Promise<Job>{
+  async calculate(projectId:string,mode:PlanningMode,onStatus:(s:string)=>void):Promise<Job>{
     if(this.demo){onStatus('Рассчитываем варианты…');const p=this.local!.projects.find(p=>p.id===projectId)!;const code=(window as unknown as {plannerWorkerSource:string}).plannerWorkerSource;const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
       this.scenarios=await new Promise<Scenario[]>((resolve,reject)=>{const worker=new Worker(url);const timer=setTimeout(()=>{worker.terminate();URL.revokeObjectURL(url);reject(new Error('Расчёт превысил 5 минут. Увеличьте передаточные партии.'));},300000);const finish=()=>{clearTimeout(timer);worker.terminate();URL.revokeObjectURL(url);};worker.onmessage=e=>{finish();e.data.error?reject(new Error(e.data.error)):resolve(e.data.scenarios);};worker.onerror=e=>{finish();reject(new Error(e.message));};worker.postMessage({workspace:this.local,projectId,mode,now:p.startDate+'T00:00:00+08:00'});});return {id:'local',status:'done',scenarios:this.scenarios};}
     let job:Job=await this.request(`projects/${projectId}/plan`,{mode});

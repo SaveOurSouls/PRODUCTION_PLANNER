@@ -22,6 +22,21 @@ export function inventoryErrors(opening:Record<string,number>,moves:Movement[]){
   return errors;
 }
 export interface DailyStock {date:string;stageId:string;opening:number;receipt:number;consume:number;output:number;shipped:number;scrap:number;closing:number;cumulative:number;events:Movement[]}
+export function materialReport(p:Project){
+  const plannedMoves:Movement[]=[...p.supplies.map(s=>({...s,kind:'receipt' as const})),...assignmentMovements(p,p.assignments)];
+  const dates=[p.startDate,p.deadline,...p.assignments.map(a=>a.end),...plannedMoves.map(m=>m.at),...p.movements.map(m=>m.at)]
+    .map(at=>DateTime.fromISO(at,{zone:p.zone}).toISODate()!).sort();
+  const from=dates[0],to=dates.at(-1)!;
+  const planned=dailyInventory(p,plannedMoves,from,to),actual=dailyInventory(p,p.movements,from,to);
+  const actualByDay=new Map(actual.map(r=>[JSON.stringify([r.date,r.stageId]),r]));
+  const days=new Map<string,{stageId:string;plan:DailyStock;fact:DailyStock}[]>();
+  for(const plan of planned){
+    const entries=days.get(plan.date)||[];
+    entries.push({stageId:plan.stageId,plan,fact:actualByDay.get(JSON.stringify([plan.date,plan.stageId]))!});
+    days.set(plan.date,entries);
+  }
+  return {from,to,days:[...days].map(([date,stages])=>({date,stages}))};
+}
 export function dailyInventory(p:Project,movements:Movement[],from=p.startDate,to=p.deadline):DailyStock[]{
   const result:DailyStock[]=[],balance={...p.opening},cumulative:Record<string,number>={};
   const sorted=[...movements].sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
@@ -32,7 +47,7 @@ export function dailyInventory(p:Project,movements:Movement[],from=p.startDate,t
     const sum=(kind:Movement['kind'])=>events.filter(e=>e.kind===kind).reduce((v,e)=>v+e.quantity,0);
     const opening=balance[s.id]||0,output=sum('output');balance[s.id]=opening+events.reduce((v,e)=>v+e.quantity,0);cumulative[s.id]=(cumulative[s.id]||0)+output;
     const scrap=events.filter(e=>e.kind==='scrap').reduce((total,e)=>total+(p.actuals.find(a=>a.id===e.note?.split(':')[0])?.scrap||0),0);
-    result.push({date:day.toISODate()!,stageId:s.id,opening,receipt:sum('receipt')+sum('adjustment')+sum('opening'),consume:-sum('consume'),output,shipped:-sum('shipment'),scrap,closing:balance[s.id],cumulative:cumulative[s.id],events});
+    result.push({date:day.toISODate()!,stageId:s.id,opening,receipt:sum('receipt')+sum('adjustment')+sum('opening'),consume:-sum('consume')||0,output,shipped:-sum('shipment')||0,scrap,closing:balance[s.id],cumulative:cumulative[s.id],events});
   }
   return result;
 }

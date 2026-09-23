@@ -57,6 +57,10 @@ function fixedProjection(p:Project,fixed:Assignment[],now:number):Movement[]{
 }
 function build(w:Workspace,p:Project,mode:PlanningMode,batchSize:number,now:string,priority:'downstream'|'buffer'):Scenario {
   const order=validateRoute(p),start=Math.max(seconds(now),DateTime.fromISO(p.startDate,{zone:p.zone}).startOf('day').toSeconds());
+  // Pull dispatch: exhaust feasible upstream work at this event before assigning
+  // spare resources downstream. Material and resource constraints still apply.
+  const depth=new Map<string,number>();
+  for(const id of order)depth.set(id,Math.max(0,...p.edges.filter(e=>e.target===id).map(e=>depth.get(e.source)!+1)));
   const fixed=preservedAssignments(p,now);const foreign=w.projects.filter(x=>x.id!==p.id&&x.status!=='deleted'&&!x.template).flatMap(x=>x.assignments);
   const assignments:Assignment[]=[...fixed],reservations=[...foreign,...fixed],stock={...p.opening};
   const baseMoves=[...p.movements,...p.supplies.map(s=>({id:s.id,stageId:s.stageId,quantity:s.quantity,at:s.at,kind:'receipt' as const})),...fixedProjection(p,fixed,start)];
@@ -101,7 +105,7 @@ function build(w:Workspace,p:Project,mode:PlanningMode,batchSize:number,now:stri
         const segments=fitWork([...r.group.map(e=>e.calendar),...(r.machine?[r.machine.calendar]:[])],busy,Math.max(t,b.ready),b.quantity*norm.cycle+setup);
         if(!segments)continue;
         const downstream=order.indexOf(stage.id);const buffer=targets.get(stage.id)||0;const deficit=buffer-(stock[stage.id]||0);
-        const rank=priority==='downstream'?-downstream:-(deficit/Math.max(1,buffer)*100+downstream);
+        const rank=mode==='pull'?depth.get(stage.id)!*2+(b.op>0?0:1):priority==='downstream'?-downstream:-(deficit/Math.max(1,buffer)*100+downstream);
         const choice:Choice={batch:b,op,group:r.group,machineId:r.machine?.id,unit:r.unit,segments,setup,key,rank};
         const from=segments[0].start,to=segments.at(-1)!.end;
         if(!best||from<best.segments[0].start||(from===best.segments[0].start&&(rank<best.rank||(rank===best.rank&&to<best.segments.at(-1)!.end))))best=choice;
@@ -130,6 +134,7 @@ function build(w:Workspace,p:Project,mode:PlanningMode,batchSize:number,now:stri
   if(DateTime.fromISO(finishAt,{zone:p.zone}).toISODate()!>p.deadline)warnings.push('Завершение позже дедлайна');
   if(idleHours>0.01)warnings.push(`Свободное рабочее время: ${idleHours.toFixed(1)} ч. Причины: ожидание материала, готовности предыдущей операции или свободной машины.`);
   if(fixed.some(a=>seconds(a.end)<seconds(now)&&!p.actuals.some(f=>f.assignmentId===a.id)))warnings.push('Есть прошедшие задания без факта. Их оставшийся выпуск учитывается только как прогноз.');
+  if(mode==='pull'&&fixed.length)warnings.push('Закреплённые и начатые партии сохранены. Приоритет предыдущих этапов действует для новых назначений.');
   return {id:uid(),projectId:p.id,revision:p.revision,mode,batch:batchSize,firstQuantity,firstAt,finishAt,assignments,movements:moves,idleHours,peakWip,warnings,score:seconds(finishAt),createdAt:now,fingerprint:fingerprint(w)};
 }
 export function plan(w:Workspace,projectId:string,mode:PlanningMode,now=new Date().toISOString()):Scenario[]{
@@ -139,11 +144,12 @@ export function plan(w:Workspace,projectId:string,mode:PlanningMode,now=new Date
   const minimum=Math.max(1,Math.ceil(p.quantity/200));
   const batches=[...new Set([minimum,...[.01,.05,.1,.25,1].map(r=>Math.max(minimum,Math.ceil(p.quantity*r)))])];
   const results:Scenario[]=[],failures:string[]=[];
-  for(const b of batches)for(const strategy of ['downstream','buffer'] as const)try{results.push(build(w,p,mode,b,now,strategy));}catch(e){failures.push((e as Error).message);}
+  const strategies=mode==='pull'?['downstream'] as const:['downstream','buffer'] as const;
+  for(const b of batches)for(const strategy of strategies)try{results.push(build(w,p,mode,b,now,strategy));}catch(e){failures.push((e as Error).message);}
   if(!results.length)throw new Error(failures[0]||'Нет допустимого плана');
   results.sort((a,b)=>a.finishAt.localeCompare(b.finishAt)||a.idleHours-b.idleHours||a.peakWip-b.peakWip);
   const explain=(selected:Scenario[])=>selected.map(s=>({...s,idlePeriods:idlePeriods(w,p,s)}));
-  if(mode==='throughput')return explain(results.slice(0,1));
+  if(mode==='throughput'||mode==='pull')return explain(results.slice(0,1));
   const unique=results.filter((r,i)=>results.findIndex(x=>x.firstQuantity===r.firstQuantity&&x.firstAt===r.firstAt)===i);
   const frontier=unique.filter(r=>!unique.some(x=>x!==r&&x.firstQuantity>=r.firstQuantity&&x.firstAt<=r.firstAt&&(x.firstQuantity>r.firstQuantity||x.firstAt<r.firstAt))).sort((a,b)=>a.firstAt.localeCompare(b.firstAt));
   if(frontier.length<=5)return explain(frontier);

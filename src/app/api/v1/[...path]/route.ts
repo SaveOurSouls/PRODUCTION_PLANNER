@@ -42,7 +42,7 @@ async function handler(req:NextRequest,context:{params:Promise<{path:string[]}>}
         if(action==='actuals')return response(await mutate('actual.create',w=>recordActual(w,id,input)));
         if(action==='movements')return response(await mutate('movement.create',w=>addMovement(w,id,input)));
         if(action==='assignments')return response(await mutate('assignment.save',w=>saveAssignment(w,id,input)));
-        if(action==='plan'){const mode=z.enum(['first','throughput']).parse(input.mode);const w=await readWorkspace();if(!w.projects.some(p=>p.id===id))throw new Error('Проект не найден');const job=await db.job.create({data:{projectId:id,mode,input:json(w)}});return response({id:job.id,status:job.status},202);}
+        if(action==='plan'){const mode=z.enum(['first','throughput','pull']).parse(input.mode);const w=await readWorkspace();if(!w.projects.some(p=>p.id===id))throw new Error('Проект не найден');const job=await db.job.create({data:{projectId:id,mode,input:json(w)}});return response({id:job.id,status:job.status},202);}
       }
     }
     if(route==='projects/import'&&req.method==='POST'){

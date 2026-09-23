@@ -29,7 +29,7 @@ export interface Project {
   opening: Record<string,number>; supplies: Supply[]; assignments: Assignment[]; baseline: Assignment[]; actuals: Actual[]; movements: Movement[]; demo: boolean;
 }
 export interface Workspace { schemaVersion: 1; projects: Project[]; employees: Employee[]; machines: Machine[]; operations: Operation[] }
-export type PlanningMode = 'first' | 'throughput';
+export type PlanningMode = 'first' | 'throughput' | 'pull';
 export interface Scenario {
   idlePeriods?: import('./idle').IdlePeriod[];
   id: string; projectId: string; revision: number; mode: PlanningMode; batch: number; firstQuantity: number; firstAt: string; finishAt: string;

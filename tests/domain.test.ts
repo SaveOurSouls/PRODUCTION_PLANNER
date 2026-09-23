@@ -22,6 +22,11 @@ describe('Граф и календарь',()=>{
   it('учитывает перерыв, 6,5 часов и выходные',()=>{const c=seedWorkspace().employees[0].calendar;const spans=fitWork([c],[],seconds('2026-09-25T09:00:00+08:00'),8*3600)!;expect(spans).toHaveLength(3);expect(spans[0].end).toBe('2026-09-25T05:00:00.000Z');expect(spans[2].start).toBe('2026-09-28T01:00:00.000Z');expect(spans.reduce((s,a)=>s+seconds(a.end)-seconds(a.start),0)).toBe(28800);});
 });
 describe('Автопланирование',()=>{
+  it('возвращает отдельный сценарий режима «Вытягивающий»',()=>{
+    const w=fixture(),s=plan(w,w.projects[0].id,'pull',now)[0];
+    expect(s.mode).toBe('pull');
+    expect(s.assignments.length).toBeGreaterThan(0);
+  });
   it('снимок PostgreSQL с другим порядком полей остаётся тем же вариантом',()=>{
     const w=fixture(),s=plan(w,w.projects[0].id,'throughput',now)[0];
     const reorder=(value:unknown):unknown=>Array.isArray(value)?value.map(reorder):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).reverse().filter(([,v])=>v!==undefined).map(([k,v])=>[k,reorder(v)])):value;
@@ -53,6 +58,13 @@ describe('Автопланирование',()=>{
   it('сохраняет чужой проект и закреплённые задания при пересчёте',()=>{const w=fixture(),p=w.projects[0];const s=plan(w,p.id,'throughput',now)[0];let next=applyScenario(w,s);next.projects[0].assignments[0].locked=true;const locked=structuredClone(next.projects[0].assignments[0]);const foreign=cloneProject(p);foreign.id='foreign';foreign.assignments=[{...s.assignments[0],id:'foreign-task',projectId:foreign.id}];next.projects.push(foreign);const result=plan(next,p.id,'throughput',now)[0];expect(result.assignments.find(a=>a.id===locked.id)).toEqual(locked);expect(next.projects[1]).toEqual(foreign);});
 });
 describe('Факт и импорт',()=>{
+  it('ручная отгрузка Final уменьшает остаток готового склада и не проходит на другом этапе',()=>{
+    const w=fixture(),p=w.projects[0];p.opening={'stage-4':12};
+    const next=addMovement(w,p.id,{id:'shipment-1',stageId:'stage-4',at:now,quantity:-5,kind:'shipment',note:'Заказ 1'});
+    const rows=dailyInventory(next.projects[0],next.projects[0].movements,next.projects[0].startDate,next.projects[0].startDate);
+    expect(rows.find(r=>r.stageId==='stage-4')?.closing).toBe(7);
+    expect(()=>addMovement(w,p.id,{id:'shipment-2',stageId:'stage-1',at:now,quantity:-1,kind:'shipment',note:'Ошибка'})).toThrow('готовую продукцию');
+  });
   it('импорт требует единицы, не скрывает пропуски и не затрагивает проектные нормы',()=>{
     const w=fixture(),snapshot=structuredClone(w.projects[0]);
     const sheet={spreadsheet:'s',sheet:'БД.ОП',at:now,values:[['Номер','Название операции','Тип операции','Время ручных работ для взятия полуфабриката','Время ручных работ','Время ручных работ для снятия полуфабриката','Время доп.операции'],['1','Сборка','Статичный','1','4','1','0']]};
